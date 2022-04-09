@@ -1,0 +1,2 @@
+class LMCounterException(Exception):
+    pass
