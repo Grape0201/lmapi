@@ -19,8 +19,9 @@ from .constants import OBJECT_TYPES
 from .lmdataclass import (
     ChestResult, GiftPopup, Gift, HuntReport, LMItem,
     MapObject, MapObjectCamp, MapObjectCastle,
-    MapObjectFort, MapObjectMonster, MapObjectMoving, MapObjectResourceTile,
-    Player, Castle, Comment, ResultOpenChests
+    MapObjectFort, MapObjectMonster, MapObjectMoving, MapObjectResourceTile, 
+    OuterGuildBoard, InnerGuildBoard,
+    Player, Castle, Comment, ResultOpenChests, SkillActivated
 )
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,10 @@ def read_packet(hexstr: str,
     elif __code.startswith("ba08"):
         # map, Dragon Arena
         return __read_ac08(hexstr)
+    elif __code.startswith("f20a"):
+        # guild inner board
+        # f20a96, f20af0
+        return __read_f20a(hexstr)
     elif __code == "310b00":
         # open gift one by one
         return __read_310b00(hexstr)
@@ -94,8 +99,56 @@ def read_packet(hexstr: str,
     elif __code == "bb0b00":
         # chat
         return __read_bb0b00(hexstr)
+    elif __code == "2a0b00":
+        # outer guild board
+        return __read_2a0b00(hexstr)
+    elif __code == "232000":
+        # skill
+        return __read_232000(hexstr)
+    elif __code.startswith("8305"):
+        # skill
+        return __read_8305(hexstr)
     else:
         raise NotImplementedError
+
+
+def __read_232000(d: str):
+    '''
+    packet of skill
+    15 00 23 20 00
+    - 1d 00
+    - 47 00 
+    - 52 1b 89 62
+    - 00 00 00 00 00 00 00 00
+    '''
+    __length = hexstr2int(d[:4])*2
+    assert __length == 42
+    skill_code = d[10:18]
+    time_activated_lasttime = hexstr2int(d[18:18+8])
+    assert d[26:42] == "0"*16
+    skills = {
+        "1d004700": "Refreshed",
+        "26005700": "Seasoned Courier",
+        "1e005b00": "Nether Quake",
+        "3a005600": "Pay Day",
+        "3c005200": "Lucky Stars",
+        "3b005100": "Stroke of Fortune",
+        "4d000a00": "First Class",
+        "34004400": "Gold Digger",
+        # "": "Fresh Air",
+        # "": "",
+        "36004800": "Ship Ahoy",
+        # "": "Gather Round",  => 別コード
+    }
+    print(skills.get(skill_code, "### "+skill_code))
+    return SkillActivated(
+        time_activated_lasttime=time_activated_lasttime,
+        skill_code=skill_code
+    )
+
+
+def __read_8305(d: str):
+    pass
 
 
 def __read_5e0d(d: str):
@@ -169,34 +222,73 @@ def __read_bb0b00(d: str) -> list[Comment]:
     packet of chat
     - [4 chars]
     - bb0b00
-    - [
+
+    me
+    unk02 = 000000009d9c083300000000
+    unk03 = 0000000000
+    unk1  = 0e
+    unk2  = 000000
+
+
     '''
     CHAT_TYPES = {
+        "6a": "",  # ?
+        "6c": "executed",  # execute leader
         "6d": "em",  # emoticon
         "00": "nc",  # normal comment
         "65": "exit guild",  # exit guild
+        "66": "",  # ?
         "69": "enter guild",  # enter guild
-        "68": "kicked ?",  # unknown
+        "68": "kicked",  # unknown
     }
     CHAT_PLACES = {
         "000100": "guild",
         "ff0100": "world",
     }
+    TITLES = {
+        "00": "",
+        "01": "",
+        "02": "",
+        "03": "",
+        "04": "",
+        "05": "",
+        "06": "",
+        "07": "",
+        "08": "",
+        "09": "",
+        "0a": "",
+        "0b": "",
+        "0c": "",
+        "0d": "",
+        "0e": "",
+        "0f": "",
+        "10": "",
+        "11": "",
+        "12": "",
+        "13": "",
+        "14": "",
+    }
     chat_place = d[10:16]
     if chat_place not in CHAT_PLACES:
         logger.warning(f"unknown chat place: {chat_place}")
     time = hexstr2int(d[16:24])
-    unk02 = d[24:48]  # 全部0 or ちょっと数字。自分のコメントの時は変わるのを確認済。
+    assert d[24:32] == "0"*8
+    iggid = hexstr2int(d[32:40])
+    assert d[40:48] == "0"*8
     comment_count = hexstr2int(d[48:54])  # 1づつ増えてる
-    unk03 = d[54:64]  # 全部0
+    assert d[54:64] == "0"*10
     chat_type = d[66:68]
     player = hexstr2str(d[72:98])
     unk1 = d[98:100]
+    assert unk1 in ["01", "02", "0a", "0b", "0c", "0d", "0e", "0f"], unk1
     guild_tag = hexstr2str(d[100:106])
-    unk2 = d[106:112]
-    # 初の2文字は 05: ギルマス, 04: 不明, 03: 不明
-    # 中の2文字は 01: 不明, 03: 不明, 14: 不明
-    # 終の2文字は 05: 普通?, 00: 不明
+    color = d[106:108]  # 05: ギルマス, 04: 不明, 03: 不明
+    title = d[108:110]
+    unk2 = d[110:112]
+    assert color in ["00", "03", "04", "05", "09"], d[106:108]
+    assert title in TITLES, d[108:110]
+    assert unk2 in ["00", "05"], d[110:112]
+
     chat_length = hexstr2int(d[112:116])*2
     if chat_type == "00":
         comment = hexstr2str(d[116:])
@@ -205,19 +297,23 @@ def __read_bb0b00(d: str) -> list[Comment]:
         # assert comment in EMOTICONS, comment
     else:
         comment = CHAT_TYPES[chat_type]
+        if chat_type not in ["68", "6c"]:
+            assert d[114:] == "00", f"chat_type={chat_type}\n{d[114:]}"
+        else:
+            comment += " by " + hexstr2str(d[116:])
     assert chat_length == len(d[114:]) - 2
     assert d[66:68] in CHAT_TYPES, d[66:68]
-    assert unk03 == "0"*10
     return [Comment(
         chat_place=chat_place,
         time=time,
-        unk02=unk02,
+        iggid=iggid,
         comment_count=comment_count,
-        unk03=unk03,
         chat_type=chat_type,
         player=player,
         unk1=unk1,
         guild_tag=guild_tag,
+        color=color,
+        title=title,
         unk2=unk2,
         comment=comment
     )]
@@ -802,3 +898,104 @@ def __create_gift(d: str, timestamp=0) -> Gift:
         player=hexstr2str(d[40:66]),
         time_gift_opened=timestamp,
     )
+
+
+def __read_f20a(d: str) -> list:
+    '''inner guild board
+
+    - 20 04: length
+    - f2 0a f0: code
+    - 6b 14 00 17: unk1
+    - 52 30 43 4b 48 45 41 52 54 00 00 00 00: Guild Master
+    - bc ad aa 30: unk2
+    - 10 00 00 00: unk3
+    - 4c 48 41: Guild Tag
+    - 4c 75 6e 65 72 20 48 75 6e 74 65 72 20 41 72 6d 79 00 00 00: Guild Name
+    - 4c 69 76 65 20 74 68 65 20 4c 65 67 65 6e 64 00 00 00 00 00: Guild slogan
+    - board: 1800
+    - 4e 01 57 01 00: unk4
+    - e4 07 e1 61 18 00: unk5
+    - 44 cb 5e 05 0c 17: unk6
+    - 00 00 00 00 00 00
+    - b2 02: kingdom
+    - 00 00 00 00 00 00 00 00 00 00 00 00
+    - 01 03: unk7
+    - 00....
+    - 0f 37 4f 33 5f 62
+    - 00 00 00 00
+    - 04 0f 00 d6 11 05 05 00 01
+    '''
+    __length = hexstr2int(d[:4])*2
+    assert __length == 2112
+
+    assert d[54:60] == "0"*6
+    assert d[1956:1960] in ["e207", "e307", "e407"]
+    assert d[1980:1992] == "0"*12
+    if d[1996:2012] != "0"*16:
+        logger.warning(f"d[1996:2012]@f20a: {d[1996:2012]}")
+    if d[2024:2074] != "0"*50:
+        logger.warning(f"d[2024:2074]@f20a: {d[2024:2074]}")
+        # f2747f000600000000000000000000000000000032281e140a
+    assert d[2084:2094] in ["6200000000", "0"*10], d[2084:2094]
+    if d[2108:2112] != "0001":
+        logger.warning(f"d[2108:2112]@f20a: {d[2108:2112]}")
+        # 0003
+    result = InnerGuildBoard(
+        guild_id=d[10:18],   # 6b1400 17
+        guild_leader=hexstr2str(d[18:44]),
+        unknown1=d[44:52],  # 同じギルドでも激しく変化している
+        unknown2=d[52:54],  # 同じギルドで最初の4文字は変化なし？残りは激しく変化している
+        guild_tag=hexstr2str(d[60:66]),
+        long_guild_name=hexstr2str(d[66:106]),
+        guild_slogan=hexstr2str(d[106:146]),
+        board=d[146:1946],
+        unknown3=d[1946:1956],
+        unknown4=d[1956:1968],
+        unknown5=d[1968:1980],
+        kingdom=hexstr2int(d[1992:1996]),
+        unknown6=d[2012:2020],  # 00000000, or
+        unknown7=d[2020:2024],
+        unknown8=d[2074:2078],
+        unknown9=d[2078:2084],  # 4f335f, 5d463,
+        guild_fest_rank=hexstr2int(d[2094:2096]),
+        guild_showdown_rank=hexstr2int(d[2096:2100]),
+        da_cups=hexstr2int(d[2100:2104]),
+        guild_bash_rank=hexstr2int(d[2104:2106]),
+        unknowna=d[2106:2108],  # 01 or 05
+    )
+    # print(result)
+    return [result]
+
+
+def __read_2a0b00(d: str) -> list:
+    '''outer guild board'''
+    __length = hexstr2int(d[:4])*2
+    assert __length == 2780
+
+    try:
+        long_guild_name = hexstr2str(d[52:92])
+    except UnicodeDecodeError:
+        long_guild_name = d[52:92]
+
+    assert d[2752:2758] == "0"*6
+    assert d[2764:2766] in ["00", "01"]
+    assert d[2770:2772] == "0"*2
+    assert d[2778:2780] == "01"
+
+    result = OuterGuildBoard(
+        guild_id=d[10:20],  # f0 6b1400 00
+        guild_leader=hexstr2str(d[20:46]),
+        guild_tag=hexstr2str(d[46:52]),
+        long_guild_name=long_guild_name,
+        board=d[92:2692],
+        guild_slogan=hexstr2str(d[2692:2732]),
+        unknown1=d[2732:2752],
+        gift_level=hexstr2int(d[2758:2760]),
+        kingdom=hexstr2int(d[2760:2764]),
+        unknown2=d[2764:2766],
+        guild_fest_rank=hexstr2int(d[2766:2768]),
+        guild_showdown_rank=hexstr2int(d[2768:2770]),
+        da_cups=hexstr2int(d[2772:2776]),
+        guild_bash_rank=hexstr2int(d[2776:2778]),
+    )
+    return [result]

@@ -31,6 +31,22 @@ except ModuleNotFoundError:
 logger = logging.getLogger(__name__)
 
 
+GUILD_FEST_RANKS = {
+    0: "-",
+    1: "Intermediate",
+    2: "Advnaced",
+    3: "Expert",
+    4: "Master",
+}
+GUILD_BASH_RANKS = {
+    1: "-",
+    2: "Intermediate",
+    3: "Advanced",
+    4: "Expert",
+    5: "Master",
+}
+
+
 @dataclass
 class Gift:
     sort_index: int
@@ -99,7 +115,7 @@ class Player:
     lastseen: int
 
     def __repr__(self):
-        return f"Player {self.name} {self.might}"
+        return f"Player {self.iggid:10d} {self.name:13} {self.might}"
 
 
 @dataclass
@@ -119,20 +135,24 @@ class Castle:
 class Comment:
     chat_place: str
     time: int
-    unk02: str
+    iggid: int
     comment_count: int
-    unk03: str
     chat_type: str
     player: str
     unk1: str
     guild_tag: str
+    color: str
+    title: str
     unk2: str
     comment: str
 
     def __repr__(self):
         repr = f"Comment: [{self.guild_tag}]{self.player:13}"
-        repr += f"@{datetime.fromtimestamp(self.time)}: {self.comment}"
-        repr += f"\n{self.unk03} {self.unk1} {self.unk2}"
+        repr += f"@{datetime.fromtimestamp(self.time)}: {self.comment}\n"
+        if self.iggid != 0:
+            repr += f"iggid = {self.iggid}\n"
+        repr += f"unk1  = {self.unk1}\n"
+        repr += f"unk2  = {self.unk2}\n"
         return repr
 
 
@@ -349,3 +369,85 @@ class ResultOpenChests:
         for i in self.items:
             repr += f"\n- {i}"
         return repr
+
+
+@dataclass
+class OuterGuildBoard:
+    guild_id: str
+    guild_leader: str
+    guild_tag: str
+    long_guild_name: str
+    board: str
+    guild_slogan: str
+    unknown1: str  # 20 chars
+    gift_level: int
+    kingdom: int
+    unknown2: str  # 2 chars, 00 or 01
+    guild_fest_rank: int
+    guild_showdown_rank: int
+    da_cups: int
+    guild_bash_rank: int
+
+    def __repr__(self) -> str:
+        repr = f"[{self.guild_tag}]{self.long_guild_name} k={self.kingdom}\n"
+        repr += f"- guild_id:       {self.guild_id}\n"
+        repr += f"- gift_lv:        {self.gift_level}\n"
+        repr += f"- guild fest:     {GUILD_FEST_RANKS[self.guild_fest_rank]}\n"
+        repr += f"- guild showdown: Division {self.guild_showdown_rank}\n"
+        repr += f"- da_cpus:        {self.da_cups} cup\n"
+        repr += f"- guild_bash:     {GUILD_BASH_RANKS[self.guild_bash_rank]}\n"
+        return repr
+
+
+@dataclass
+class InnerGuildBoard:
+    guild_id: str
+    guild_leader: str
+    unknown1: str  # 8
+    unknown2: str  # 2
+    guild_tag: str
+    long_guild_name: str
+    guild_slogan: str
+    board: str
+    unknown3: str  # 10
+    unknown4: str  # 12
+    unknown5: str  # 12
+    kingdom: int
+    unknown6: str  # 8
+    unknown7: str  # 4
+    unknown8: str  # 4
+    unknown9: str  # 6
+    guild_fest_rank: int
+    guild_showdown_rank: int
+    da_cups: int
+    guild_bash_rank: int
+    unknowna: str  # 2
+
+    def __repr__(self) -> str:
+        repr = f"[{self.guild_tag}]{self.long_guild_name} k={self.kingdom}\n"
+        repr += f"- guild_id:       {self.guild_id}\n"
+        # repr += f"- gift_lv:        {self.gift_level}\n"
+        repr += f"- guild fest:     {GUILD_FEST_RANKS[self.guild_fest_rank]}\n"
+        repr += f"- guild showdown: Division {self.guild_showdown_rank}\n"
+        repr += f"- da_cpus:        {self.da_cups} cup\n"
+        repr += f"- guild_bash:     {GUILD_BASH_RANKS[self.guild_bash_rank]}\n"
+
+        repr += " ".join([
+            self.unknown1,
+            self.unknown2,
+            self.unknown3,
+            self.unknown4,
+            self.unknown5,
+            self.unknown6,
+            self.unknown7,
+            self.unknown8,
+            self.unknown9,
+            self.unknowna,
+        ])
+        return repr
+
+
+@dataclass
+class SkillActivated:
+    time_activated_lasttime: int
+    skill_code: str

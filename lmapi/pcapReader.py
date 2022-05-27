@@ -79,7 +79,7 @@ def __get_extracted_packet_pyshark(
         return None
     return (
         binascii.unhexlify(packet.data.data).hex(),
-        int(packet.sniff_timestamp)
+        int(float(packet.sniff_timestamp))
     )
 
 
@@ -198,7 +198,7 @@ def get_iggip(cap, scapy=True):
 
 
 def read_pcapfile(pcapfile: str, codes, codestartwith,
-                  p=True, ipaddrs=[]) -> list:
+                  p=True, ipaddrs=[], delim=80) -> list:
     results = []
     __size = os.path.getsize(pcapfile)/1024/1024
     __started = time.time()
@@ -206,11 +206,12 @@ def read_pcapfile(pcapfile: str, codes, codestartwith,
     logger.info(
         f"time to load pcap: {time.time()-__started:5.2f}sec/{__size:.2f}MB")
     iggips = get_iggip(cap)
-    for addr in ipaddrs:
-        if addr in iggips:
-            break
-    else:
-        assert False, f"ip: {addr} not found !"
+    if ipaddrs:
+        for addr in ipaddrs:
+            if addr in iggips:
+                break
+        else:
+            assert False, f"ip selected not found: {ipaddrs}"
 
     d = ""
     for i, packet in enumerate(cap):
@@ -220,6 +221,7 @@ def read_pcapfile(pcapfile: str, codes, codestartwith,
         dd, timestamp = _dd
         d += dd
         while True:
+            # 1690 15002320001d004700d0
             if len(d) < 10:
                 # データ長さとcodeが読み取れないほど短かったら抜ける
                 break
@@ -247,10 +249,8 @@ def read_pcapfile(pcapfile: str, codes, codestartwith,
             else:
                 # データ長さが足りなかったら次のパケットをもらうために抜ける
                 break
-            if __length < 80:
+            if __length < delim:  # CAUTION
                 continue
-            # if p:
-            #     print(data[4:10], hexstr2int(data[:4]))
             result = read_packet(data, codes, codestartwith,
                                  timestamp=timestamp)
             if result is None or len(result) == 0:

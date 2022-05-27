@@ -1,9 +1,10 @@
 import struct
 
 
-def hexstr2str(hexstring: str, encoding="utf-8") -> str:
-    while hexstring[-2:] == "00":
-        hexstring = hexstring[:-2]
+def hexstr2str(hexstring: str, encoding="utf-8", delim=True) -> str:
+    if delim:
+        while hexstring[-2:] == "00":
+            hexstring = hexstring[:-2]
     return bytes.fromhex(hexstring).decode(encoding)
 
 
