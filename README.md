@@ -1,5 +1,3 @@
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/lordscounters)
-
 # lmapi
 a small project for sniffing packets of Lords Mobile
 
